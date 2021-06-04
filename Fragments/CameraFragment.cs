@@ -288,7 +288,7 @@ namespace CameraXBasic.Fragments
                     // Values returned from our analyzer are passed to the attached listener
                     // We log image analysis results here - you should do something useful
                     // instead!
-                    Log.Debug(Tag, "Average luminosity: " + luma);
+                    Log.Debug(Tag, "Average luminosity: " + luma.ToString("0.00"));
                 })
             );
 
@@ -303,7 +303,7 @@ namespace CameraXBasic.Fragments
                     (ILifecycleOwner) this, cameraSelector, preview, imageCapture, imageAnalyzer);
 
                 // Attach the viewfinder's surface provider to preview use case
-                preview?.SetSurfaceProvider(viewFinder.CreateSurfaceProvider());
+                preview?.SetSurfaceProvider(viewFinder.SurfaceProvider);
             }
             catch (Java.Lang.Exception exc)
             {
@@ -509,11 +509,13 @@ namespace CameraXBasic.Fragments
         //
         private class LuminosityAnalyzer : Java.Lang.Object, ImageAnalysis.IAnalyzer
         {
+            private int frameCounter = 0;
             private int frameRateWindow = 8;
             private Queue<long> frameTimestamps = new Queue<long>(5);
             private LumaListener[] listeners;
             private long lastAnalyzedTimestamp = 0L;
             private double framesPerSecond = -1.0;
+            private byte[] data;
 
             public LuminosityAnalyzer(LumaListener listener)
                 : base()
@@ -528,12 +530,15 @@ namespace CameraXBasic.Fragments
             }
 
             // Helper extension function used to extract a byte array from an image plane buffer
-            byte[] ToByteArray(Java.Nio.ByteBuffer byteBuffer)
+            void ToByteArray(Java.Nio.ByteBuffer byteBuffer)
             {
                 byteBuffer.Rewind();    // Rewind the buffer to zero
-                var data = new byte[byteBuffer.Remaining()];
+                if (data == null || data.Length != byteBuffer.Remaining())
+                {
+                    // The int buffer is initialized only once the analyzer has started running
+                    data = new byte[byteBuffer.Remaining()];
+                }
                 byteBuffer.Get(data);   // Copy the buffer into a byte array
-                return data;            // Return the byte array
             }
 
             // Analyzes an image to produce a result.
@@ -568,7 +573,11 @@ namespace CameraXBasic.Fragments
                 var timestampFirst = frameTimestamps.First();
                 var timestampLast = frameTimestamps.Last();
                 framesPerSecond = 1.0 / ((timestampLast - timestampFirst) /
-                    System.Math.Max(1, frameTimestamps.Count)) * 1000.0;
+                    System.Math.Max(1, frameTimestamps.Count - 1)) * 1000.0;
+                if (++frameCounter % frameRateWindow == 0)
+                {
+                    Log.Debug(Tag, "Frames per second: " + framesPerSecond.ToString("0.00"));
+                }
 
                 // Analysis could take an arbitrarily long amount of time
                 // Since we are running in a different thread, it won't stall other use cases
@@ -579,13 +588,15 @@ namespace CameraXBasic.Fragments
                 var buffer = image.GetPlanes()[0].Buffer;
 
                 // Extract image data from callback object
-                var data = ToByteArray(buffer);
-
-                // Convert the data into an array of pixel values ranging 0-255
-                var pixels = data.Select(x => (int) x & 0xFF).ToArray();
+                ToByteArray(buffer);
 
                 // Compute average luminance for the image
-                var luma = pixels.Average();
+                double luma = 0;
+                for (int i = 0; i < data.Length; i++)
+                {
+                    luma += data[i];
+                }
+                luma /= data.Length;
 
                 // Call all listeners with new value
                 foreach (LumaListener item in listeners)
@@ -597,7 +608,7 @@ namespace CameraXBasic.Fragments
             }
         }
 
-        private const string Tag = "CameraXBasic";
+        private new const string Tag = "CameraXBasic";
         private const string Filename = "yyyy-MM-dd-HH-mm-ss-SSS";
         private const string PhotoExtension = ".jpg";
         private const double Ratio4To3Value = 4.0 / 3.0;

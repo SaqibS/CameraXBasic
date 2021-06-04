@@ -2,7 +2,6 @@
 using Android;
 using Android.Content;
 using Android.Content.PM;
-using Android.OS;
 using Android.Widget;
 using AndroidX.Core.Content;
 using AndroidX.Fragment.App;
@@ -17,9 +16,9 @@ namespace CameraXBasic.Fragments
         private const int PermissionsRequestCode = 10;
         private static readonly string[] PermissionsRequired = { Manifest.Permission.Camera };
 
-        public override void OnCreate(Bundle savedInstanceState)
+        public override void OnStart()
         {
-            base.OnCreate(savedInstanceState);
+            base.OnStart();
 
             if (!HasPermissions(RequireContext()))
             {
